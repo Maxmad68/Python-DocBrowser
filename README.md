@@ -4,5 +4,6 @@ It offers a good way to navigate into classes, functions, modules or constants o
 
 To use DocBrowser, just download the docBrowser.py file and execute it in a terminal. You can add a module name as an argument, otherwise you would have to type it in a window.
 
-
-!(https://zupimages.net/up/18/05/n4sy.png)
+<u>Example with browsing docs of Urllib:</u>
+<img src="https://zupimages.net/up/18/05/n4sy.png" width="600"></br>
+<img src="https://zupimages.net/up/18/05/f2dx.png" width="600">

@@ -107,149 +107,65 @@ def getAttributesForSource(sourcecode,includingHidden=True):
 	return filter(lambda s:(s[0] != '_') if not includingHidden else True,attributes)
 
 
+def on_closing(*args):
+	if len(opened_windows) < 1:
+		master.destroy()
+
 class DocBrowser(object):
 	def __init__(self,modulename=__builtins__,winInstance=None):
+		self.modulename = modulename
 		try:
-			if isinstance(modulename, basestring):
-				if os.path.isfile(modulename):
-					file_ = modulename
-					modulename = '.'.join(os.path.split(modulename)[-1].split('.')[:-1])
-					module = imp.load_source(modulename,file_)
+			if isinstance(self.modulename, basestring):
+				if os.path.isfile(self.modulename):
+					file_ = self.modulename
+					self.modulename = '.'.join(os.path.split(self.modulename)[-1].split('.')[:-1])
+					self.module = imp.load_source(self.modulename,file_)
 				else:
-					module = imp.load_module(modulename,*imp.find_module(modulename))
-			elif inspect.ismodule(modulename):
-				module = modulename
-				modulename = module.__name__
+					self.module = imp.load_module(self.modulename,*imp.find_module(self.modulename))
+			elif inspect.ismodule(self.modulename):
+				self.module = self.modulename
+				self.modulename = self.module.__name__
 		except Exception as e:
 			tkMessageBox.showerror("Error", e)
 			sys.exit()
 
 		
 		root = Toplevel(winInstance)
+		root.protocol("WM_DELETE_WINDOW", self.on_closing)
+		self.root = root
+		opened_docbrowsers.append(self)
+		opened_windows.append(self.root)
+		
 		root.geometry('1000x750')
-		root.title(modulename)
+		root.title(self.modulename)
 
-		objectsForSubmenus = {}
+		self.getImage = lambda data : PhotoImage(data=data)
 
-		getImage = lambda data : PhotoImage(data=data)
-
-		classImage = getImage(ImageDatas.classImageData)
-		methodImage = getImage(ImageDatas.methodImageData)
-		functionImage = getImage(ImageDatas.functionImageData)
-		attributeImage = getImage(ImageDatas.attributeImageData)
-		moduleImage = getImage(ImageDatas.moduleImageData)
-		constantImage = getImage(ImageDatas.constantImageData)
+		self.classImage = self.getImage(ImageDatas.classImageData)
+		self.methodImage = self.getImage(ImageDatas.methodImageData)
+		self.functionImage = self.getImage(ImageDatas.functionImageData)
+		self.attributeImage = self.getImage(ImageDatas.attributeImageData)
+		self.moduleImage = self.getImage(ImageDatas.moduleImageData)
+		self.constantImage = self.getImage(ImageDatas.constantImageData)
 
 
-		tree = ttk.Treeview(root)
+		self.tree = ttk.Treeview(root)
 
-		moduleSubmenu = tree.insert("" , 0,    text=modulename,image=moduleImage)
-		objectsForSubmenus[moduleSubmenu] = module
-
-		tree.insert("", 1, "modules", text="Modules")
 		
-		tree.insert("", 2, "submodules", text="Submodules")
-
-		tree.insert("", 3, "classes", text="Classes")
-
-		tree.insert("", 4, "functions", text="Functions")
-
-		tree.insert("", 5, "methods", text="Methods")
-
-		tree.insert("", 'end', "constants", text="Constants")
 		
-		def getImageFor(obj):
-			if inspect.isclass(obj):
-				return classImage
-			elif inspect.ismodule(obj):
-				return moduleImage
-			elif inspect.ismethod(obj):
-				return methodImage
-			elif inspect.isfunction(obj):
-				return functionImage
-			else:
-				return constantImage
-
-		def getEntriesForClass(item,obj):
-			classesSubitem = tree.insert(item, 2, "", text="Classes")
-
-			functionsSubitem = tree.insert(item, 3, "", text="Functions")
-
-			methodsSubitem = tree.insert(item, 4, "", text="Methods")
-			
-			instMethodsSubitem = tree.insert(item, 5, "", text="Instance Methods")
-			
-			for name, obj in inspect.getmembers(obj):
-				if '__' in name:
-					if inspect.ismethod(obj):
-						submenu = tree.insert(instMethodsSubitem, "end", "", text=name,image=methodImage)
-						objectsForSubmenus[submenu] = obj
-					continue
-					
-				if inspect.isclass(obj):
-					if obj.__module__ == module.__name__:
-						submenu = tree.insert(classesSubitem, "end", "", text=name,image=classImage)
-						getEntriesForClass(submenu,obj)
-					
-					else:
-						continue
-						
-				elif (inspect.ismethod(obj) or 'builtin_function_or_method' in str(type(obj))) and '__' not in name:
-					submenu = tree.insert(methodsSubitem, "end", "", text=name,image=methodImage)
-				elif inspect.isfunction(obj):
-					submenu = tree.insert(functionsSubitem, "end", "", text=name,image=functionImage)
-				else:
-					submenu = tree.insert(item, 'end', '', text=name,image=constantImage)
-				
-				objectsForSubmenus[submenu] = obj
-				
-				
-				
-				
-
-		for name, obj in inspect.getmembers(module):
-			if '__' in name:
-				continue
-				
-				
-			if inspect.isclass(obj):
-				if obj.__module__ == module.__name__:
-					submenu = tree.insert('classes', "end", "", text=name,image=classImage)
-					getEntriesForClass(submenu,obj)
-				else:
-					continue
-					
-			elif inspect.ismethod(obj) or 'builtin_function_or_method' in str(type(obj)):
-				submenu = tree.insert('methods', "end", "", text=name,image=methodImage)
-			elif inspect.ismodule(obj):
-				submenu = tree.insert('modules', "end", "", text=name,image=moduleImage)
-			elif inspect.isfunction(obj):
-				submenu = tree.insert('functions', "end", "", text=name,image=functionImage)
-			else:
-				submenu = tree.insert("constants", 'end', '', text=name,image=constantImage)
-			
-			objectsForSubmenus[submenu] = obj
-
-
-		try:
-			for importer, modname, ispkg in pkgutil.iter_modules(module.__path__):
-				submenu = tree.insert('submodules', "end", "", text=modname,image=moduleImage)
-				obj = importer.find_module(modname).load_module(modname)
-				objectsForSubmenus[submenu] = obj
-		except:
-			pass
-
+		self.preloadComponents()
+		self.buildMenu()
 		
 		def openDetails(event):
-			item = tree.focus()
-			obj = objectsForSubmenus.get(item)
+			item = self.tree.focus()
+			obj = self.objectsForSubmenus.get(item)
 			if obj:
 				if inspect.ismodule(obj):
 					DocBrowser(obj,winInstance)
 					
 		def showSource(event):
-			item = tree.focus()
-			obj = objectsForSubmenus.get(item)
+			item = self.tree.focus()
+			obj = self.objectsForSubmenus.get(item)
 
 			
 			docView.delete('showSource.first','showSource.last')
@@ -271,7 +187,7 @@ class DocBrowser(object):
 			
 			
 
-		docView = Text(root,font = ("Courier", 15))
+		docView = Text(self.root,font = ("Courier", 15))
 		docView.bind("<Key>", lambda e: "break")
 		
 		docView.pack(expand=True,fill=BOTH,side=RIGHT)
@@ -304,7 +220,7 @@ class DocBrowser(object):
 			
 			docView.delete('1.0',END)
 			
-			imageTypeObj = getImageFor(obj)
+			imageTypeObj = self.getImageFor(obj)
 			
 			docView.image_create('end', image=imageTypeObj)
 			docView.insert('end',' '+name,'objName')
@@ -316,9 +232,15 @@ class DocBrowser(object):
 				else:
 					docView.insert('end','\nDoesn\'t inherits from any class')
 			
+			try:
+				if obj.__module__ != self.module.__name__:
+					docView.insert('end','\nFrom module ')
+					docView.insert('end',obj.__module__,'inheritsClass')
+					docView.insert('end','\n')
+			except:
+				pass
+			
 			docView.insert('end','\n\n\n')
-			
-			
 
 			if doc:
 				docView.insert('end', doc)
@@ -359,7 +281,7 @@ class DocBrowser(object):
 							
 							for attribut in attributs:
 								docView.insert('end','\t')
-								docView.image_create('end', image=attributeImage)
+								docView.image_create('end', image=self.attributeImage)
 								docView.insert('end',attribut)
 								docView.insert('end','\n')
 							
@@ -385,33 +307,187 @@ class DocBrowser(object):
 
 		def select(event):
 			item = event.widget.focus()
-			obj = objectsForSubmenus.get(item)
-			name = (tree.item(item)['text'])
+			obj = self.objectsForSubmenus.get(item)
+			name = (self.tree.item(item)['text'])
 			if obj:
 				openDocFor(obj,name)
 				
 
 					
-		tree.bind("<<TreeviewSelect>>", select)
-		tree.bind("<Double-Button-1>", openDetails)
-		tree.pack( fill=Y,side=LEFT)
+		self.tree.bind("<<TreeviewSelect>>", select)
+		self.tree.bind("<Double-Button-1>", openDetails)
+		self.tree.pack( fill=Y,side=LEFT)
 
-		root.mainloop()
+		self.root.mainloop()
+	
+	def preloadComponents(self):
+		self.submodulesDir = {}
+		me = sys.modules[__name__]
+		for module in sys.modules.values():
+			if inspect.ismodule(module) and module != self.module:
+				self.submodulesDir.update(module.__dict__)
+
+
+	def buildMenu(self):
+		self.objectsForSubmenus = {}
+		
+		self.tree.delete(*self.tree.get_children())
+		
+		self.tree.tag_configure('tagSelf')
+		self.tree.tag_configure('tagOtherModule', foreground="red", font="Arial 13 italic")
+				
+		moduleSubmenu = self.tree.insert("" , 0,    text=self.modulename,image=self.moduleImage)
+		self.objectsForSubmenus[moduleSubmenu] = self.module
+		
+		self.tree.insert("", 1, "modules", text="Modules")
+		
+		self.tree.insert("", 2, "submodules", text="Submodules")
+
+		self.tree.insert("", 3, "classes", text="Classes")
+
+		self.tree.insert("", 4, "functions", text="Functions")
+
+		self.tree.insert("", 5, "methods", text="Methods")
+
+		self.tree.insert("", 'end', "constants", text="Constants")
+
+		def getEntriesForClass(item,obj):
+			classesSubitem = self.tree.insert(item, 2, "", text="Classes")
+
+			functionsSubitem = self.tree.insert(item, 3, "", text="Functions")
+
+			methodsSubitem = self.tree.insert(item, 4, "", text="Methods")
+			
+			instMethodsSubitem = self.tree.insert(item, 5, "", text="Instance Methods")
+			
+			for name, obj in inspect.getmembers(obj):
+				if '__' in name:
+					if inspect.ismethod(obj):
+						submenu = self.tree.insert(instMethodsSubitem, "end", "", text=name,image=self.methodImage)
+						self.objectsForSubmenus[submenu] = obj
+					continue
+					
+				try:
+					if obj.__module__ != self.module.__name__ and not show_imported_elements.get():
+						continue
+					elif obj.__module__ != self.module.__name__ and show_imported_elements.get():
+						selectedTag = 'tagOtherModule'
+					else:
+						selectedTag = 'tagSelf'
+						
+				except:
+					selectedTag = 'tagSelf'	
+					
+				if inspect.isclass(obj):
+					submenu = self.tree.insert(classesSubitem, "end", "", text=name,image=self.classImage,tags=(selectedTag))
+					getEntriesForClass(submenu,obj)
+						
+				elif (inspect.ismethod(obj) or 'builtin_function_or_method' in str(type(obj))) and '__' not in name:
+					submenu = self.tree.insert(methodsSubitem, "end", "", text=name,image=self.methodImage)
+				elif inspect.isfunction(obj):
+					submenu = self.tree.insert(functionsSubitem, "end", "", text=name,image=self.functionImage)
+				else:
+					submenu = self.tree.insert(item, 'end', '', text=name,image=self.constantImage)
+				
+				self.objectsForSubmenus[submenu] = obj
+				
+				
+				
+				
+
+		for name, obj in inspect.getmembers(self.module):
+			#print name,obj
+			if inspect.ismethod(obj):
+				submenu = self.tree.insert(instMethodsSubitem, "end", "", text=name,image=self.methodImage)
+				self.objectsForSubmenus[submenu] = obj
+							
+			try:
+				if obj.__module__ != self.module.__name__ and not show_imported_elements.get():
+					continue
+				elif obj.__module__ != self.module.__name__ and show_imported_elements.get():
+					selectedTag = 'tagOtherModule'
+				else:
+					selectedTag = 'tagSelf'
+					
+			except:
+				selectedTag = 'tagSelf'
+				
+				
+			if inspect.isclass(obj):
+				submenu = self.tree.insert('classes', "end", "", text=name,image=self.classImage,tags=(selectedTag))
+				getEntriesForClass(submenu,obj)
+					
+			elif inspect.ismethod(obj) or 'builtin_function_or_method' in str(type(obj)):
+				submenu = self.tree.insert('methods', "end", "", text=name,image=self.methodImage,tags=(selectedTag))
+			elif inspect.ismodule(obj):
+				submenu = self.tree.insert('modules', "end", "", text=name,image=self.moduleImage,tags=(selectedTag))
+			elif inspect.isfunction(obj):
+				submenu = self.tree.insert('functions', "end", "", text=name,image=self.functionImage,tags=(selectedTag))
+			else:
+				if name in self.submodulesDir.keys() and not '__' in name:
+					if show_imported_elements.get():
+						selectedTag = 'tagOtherModule'
+					else:
+						continue
+				else:
+					selectedTag = 'tagSelf'
+					
+				submenu = self.tree.insert("constants", 'end', '', text=name,image=self.constantImage,tags=(selectedTag))
+			
+			self.objectsForSubmenus[submenu] = obj
+
+
+		try:
+			for importer, modname, ispkg in pkgutil.iter_modules(module.__path__):
+				submenu = self.tree.insert('submodules', "end", "", text=modname,image=self.moduleImage,tags=(selectedTag))
+				obj = importer.find_module(modname).load_module(modname)
+				self.objectsForSubmenus[submenu] = obj
+		except:
+			pass
+
+		
+	def getImageFor(self,obj):
+		if inspect.isclass(obj):
+			return self.classImage
+		elif inspect.ismodule(obj):
+			return self.moduleImage
+		elif inspect.ismethod(obj):
+			return self.methodImage
+		elif inspect.isfunction(obj):
+			return self.functionImage
+		else:
+			return self.constantImage
+				
+	def on_closing(self):
+		opened_docbrowsers.remove(self)
+		opened_windows.remove(self.root)
+		on_closing()
+		self.root.destroy()
+		
 		
 		
 def openDocForModule(*args):
 	def browse(*args):
 		modulename = module.get()
 		subwindow.destroy()
+		opened_windows.remove(subwindow)
 		DocBrowser(modulename,master)
 		
 	def chooseFile(*args):
 		filename = askopenfilename()
 		module.delete(0,END)
 		module.insert(0,filename)
+		
+	def on_closing_opener():
+		subwindow.destroy()
+		opened_windows.remove(subwindow)
+		on_closing()
 	
 	subwindow = Toplevel(master)
 	subwindow.title('DocBrowser')
+	subwindow.protocol("WM_DELETE_WINDOW", on_closing_opener)
+	
+	opened_windows.append(subwindow)
 	
 	lbl = Label(subwindow,text='Module:')
 	lbl.grid(row=0,column=0)
@@ -428,31 +504,45 @@ def openDocForModule(*args):
 	subwindow.bind('<Return>', (lambda e, validateButton=validateButton: validateButton.invoke()))
 	
 	subwindow.mainloop()
+	
+def rebuild_all_menus(*args):
+	for toplevel in opened_docbrowsers:
+		toplevel.buildMenu()
 
-master = Tk()
-master.withdraw()
+if __name__ == '__main__':
+	master = Tk()
+	master.withdraw()
+
+	show_inv = BooleanVar()
+	show_imported_elements = BooleanVar()
+	opened_docbrowsers = []
+	opened_windows = []
+
+	menubar = Menu()
+
+	module_menu = Menu(menubar, tearoff=0)
+	menubar.add_cascade(label="Module", menu=module_menu)
+	module_menu.add_command(label="Open",command=openDocForModule)
+	module_menu.add_command(label="Open __builtins__",command=lambda *args: DocBrowser(__builtins__))
+	
+	settings_menu = Menu(menubar, tearoff=0)
+	menubar.add_cascade(label="Settings", menu=settings_menu)
+	settings_menu.add_checkbutton(label="Show invisibles", onvalue=1, offvalue=False, variable=show_inv,command=rebuild_all_menus)
+	settings_menu.add_checkbutton(label="Show imported elements", onvalue=1, offvalue=False, variable=show_imported_elements,command=rebuild_all_menus)
+	
+
+	master.config(menu=menubar)
 
 
-menubar = Menu()
+	if '--help' in sys.argv or '-h' in sys.argv:
+		print 'DocBrowser, by Maxime MADRAU'
+		print
+		print 'Usage:'
+		print '  docbrowser <file-or-module>'
+		sys.exit()
 
-menu = Menu(menubar, tearoff=0)
-menubar.add_cascade(label="File", menu=menu)
-menu.add_command(label="Open",command=openDocForModule)
-menu.add_command(label="Open __builtins__",command=lambda *args: DocBrowser(__builtins__))
-
-
-master.config(menu=menubar)
-
-
-if '--help' in sys.argv or '-h' in sys.argv:
-	print 'DocBrowser, by Maxime MADRAU'
-	print
-	print 'Usage:'
-	print '  docbrowser <file-or-module>'
-	sys.exit()
-
-if len(sys.argv) > 1:
-	mod = sys.argv[1]
-	DocBrowser(mod,master)
-else:
-	openDocForModule(0)
+	if len(sys.argv) > 1:
+		mod = sys.argv[1]
+		DocBrowser(mod,master)
+	else:
+		openDocForModule(0)
